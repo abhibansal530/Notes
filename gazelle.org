@@ -1,0 +1,57 @@
+#+TITLE: Gazelle Notes
+
+* Gazelle
+
+Let's see how to use [[https://github.com/bazelbuild/bazel-gazelle][gazelle]].
+
+1. Clone a golang project which is not using bazel.
+2. Create a 'WORKSPACE' file (in project root) based on https://github.com/bazelbuild/bazel-gazelle#id2
+3. Create a =BUILD= file (in project root) with this content :
+
+   #+BEGIN_EXAMPLE
+   load("@bazel_gazelle//:def.bzl", "gazelle")
+
+   # gazelle:prefix github.com/example/project
+   gazelle(name = "gazelle")
+   #+END_EXAMPLE
+
+4. Run ~bazel run //:gazelle~
+
+What happened so far :
+
+1. =WORKSPACE= file is used to specify a project and external bazel dependencies (like gazelle).
+2. =BUILD= files defines a ~gazelle~ target which is used to invoke gazelle binary.
+3. In turn gazelle binary generates our ~BUILD~ files in other project directories.
+
+I am not sure how it decides the build targets in those generated =BUILD= files, but most likely
+non-main package are treated as libs, and main packages as bins.
+
+But we are not done yet. If you follow the referenced tutorial, you'll see that we have not solved
+the issue of external go dependencies yet. Reason being =gazelle= has only used current project structure
+and files to auto-generated =BUILD= files. But it doesn't know yet on where to find the external deps
+(like github ones).
+
+But one nice thing with =go= is that it generates a =go.mod= files, which lists down these external deps.
+So gazelle can just use that to create appropriate targets for these external deps.
+
+Add this new target in top-level =BUILD= file :
+
+#+BEGIN_EXAMPLE
+gazelle(
+    name = "gazelle-update-repos",
+    args = [
+        "-from_file=go.mod",
+        "-to_macro=deps.bzl%go_dependencies",
+        "-prune",
+        "-build_file_proto_mode=disable_global",
+    ],
+    command = "update-repos",
+)
+#+END_EXAMPLE
+
+And run ~bazel run //:gazelle-update-repos~
+
+This will generate a file named ~deps.bzl~ which will have targets for external go repos.
+And it'll also update our =WORKSPACE= file to import this ~deps.bzl~ file, sweet.
+
+Ref. : https://www.tweag.io/blog/2021-09-08-rules_go-gazelle/
